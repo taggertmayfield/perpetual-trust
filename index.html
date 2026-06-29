@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Perpetual Trust — Land Holdings</title>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --ink:#15120D; --ink-2:#1C1810; --panel:#211C15; --panel-2:#2A2418;
+    --line:rgba(233,224,205,.12); --line-strong:rgba(233,224,205,.24);
+    --paper:#ECE3CF; --paper-dim:#C9BFA6; --muted:#9A8C70;
+    --brass:#C9A24B; --brass-hi:#E6C879;
+    --sage:#7BA05E; --ochre:#D2A23E; --slate:#5E87A6;
+    --danger:#CE7059; --ok:#7FA86B; --warn:#D8AE52;
+    --serif:'Fraunces',Georgia,serif; --sans:'Inter',system-ui,sans-serif; --mono:'IBM Plex Mono',monospace;
+    --drawer-w:380px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:var(--sans); color:var(--paper); background:var(--ink);
+    -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  button{font-family:inherit}
+
+  /* ---------- Header ---------- */
+  .app-header{
+    position:fixed; inset:0 0 auto 0; z-index:1200; height:64px;
+    display:flex; align-items:center; gap:18px; padding:0 18px;
+    background:linear-gradient(180deg,rgba(21,18,13,.97),rgba(21,18,13,.86) 70%,rgba(21,18,13,0));
+    border-bottom:1px solid var(--line);
+  }
+  .brandmark{display:flex; align-items:baseline; gap:10px; min-width:0}
+  .brandmark .glyph{
+    font-family:var(--serif); color:var(--brass); font-size:24px; line-height:1;
+    border:1px solid var(--brass); border-radius:3px; padding:5px 8px 4px; letter-spacing:1px;
+  }
+  .brandmark .wordmark{font-family:var(--serif); font-weight:500; font-size:20px; letter-spacing:.3px; white-space:nowrap}
+  .brandmark .wordmark em{font-style:italic; color:var(--brass-hi)}
+  .brandmark .sub{font-size:11px; color:var(--muted); letter-spacing:.16em; text-transform:uppercase; margin-top:2px}
+
+  /* ---------- Ledger (signature element) ---------- */
+  .ledger{display:flex; gap:0; margin-left:auto; align-items:stretch}
+  .ledger .col{
+    padding:6px 18px; border-left:1px solid var(--line); display:flex; flex-direction:column; justify-content:center;
+  }
+  .ledger .col:first-child{border-left:0}
+  .ledger .k{font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted)}
+  .ledger .v{font-family:var(--mono); font-size:17px; font-weight:500; letter-spacing:-.01em; margin-top:3px}
+  .ledger .v.pos{color:var(--ok)} .ledger .v.neg{color:var(--danger)}
+
+  .status-chip{
+    display:inline-flex; align-items:center; gap:7px; font-size:11px; color:var(--paper-dim);
+    border:1px solid var(--line-strong); border-radius:999px; padding:6px 11px; cursor:default; white-space:nowrap;
+  }
+  .status-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 3px rgba(216,174,82,.15)}
+  .status-chip.live .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(127,168,107,.15)}
+
+  /* ---------- Map ---------- */
+  #map{position:fixed; inset:64px 0 0 0; background:#0b0c0a; z-index:1}
+  .leaflet-container{background:#0b0c0a; font-family:var(--sans)}
+  .leaflet-control-zoom a{
+    background:var(--panel); color:var(--paper); border-color:var(--line)!important;
+  }
+  .leaflet-control-zoom a:hover{background:var(--panel-2)}
+  .leaflet-control-attribution{
+    background:rgba(21,18,13,.7)!important; color:var(--muted)!important; font-size:10px;
+  }
+  .leaflet-control-attribution a{color:var(--paper-dim)!important}
+  .leaflet-bar{border:1px solid var(--line)!important}
+  .leaflet-control-scale-line{
+    background:rgba(21,18,13,.7); color:var(--paper-dim); border-color:var(--line-strong)!important;
+    font-family:var(--mono); font-size:10px;
+  }
+
+  /* Plat-tag parcel labels */
+  .plat-tag{pointer-events:none}
+  .plat-tag .tag{
+    display:inline-block; transform:translate(-50%,-50%);
+    background:rgba(21,18,13,.82); border:1px solid var(--line-strong);
+    border-radius:3px; padding:4px 8px 5px; text-align:center; backdrop-filter:blur(2px);
+    box-shadow:0 2px 10px rgba(0,0,0,.4);
+  }
+  .plat-tag .nm{font-family:var(--serif); font-size:12px; line-height:1.05; color:var(--paper)}
+  .plat-tag .ac{font-family:var(--mono); font-size:10px; color:var(--brass-hi); margin-top:1px}
+
+  /* ---------- Holdings list (floating) ---------- */
+  .holdings{
+    position:fixed; left:18px; top:80px; z-index:1100; width:210px;
+    background:rgba(21,18,13,.82); border:1px solid var(--line); border-radius:8px;
+    backdrop-filter:blur(6px); overflow:hidden;
+  }
+  .holdings h2{
+    font-family:var(--serif); font-weight:500; font-size:13px; margin:0;
+    padding:11px 13px 9px; border-bottom:1px solid var(--line); color:var(--paper-dim);
+    letter-spacing:.04em;
+  }
+  .hold-item{
+    width:100%; text-align:left; background:none; border:0; cursor:pointer; color:var(--paper);
+    display:flex; align-items:center; gap:10px; padding:10px 13px; border-bottom:1px solid var(--line);
+    transition:background .15s;
+  }
+  .hold-item:last-child{border-bottom:0}
+  .hold-item:hover{background:rgba(233,224,205,.06)}
+  .hold-item.active{background:rgba(201,162,75,.14)}
+  .hold-item .swatch{width:11px;height:11px;border-radius:2px;flex:0 0 auto;border:1px solid rgba(0,0,0,.3)}
+  .hold-item .nm{font-size:13px; line-height:1.1}
+  .hold-item .ac{font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:2px}
+  .hold-item .meta{min-width:0; flex:1}
+
+  /* ---------- Drawer ---------- */
+  .drawer{
+    position:fixed; top:64px; right:0; bottom:0; width:var(--drawer-w); z-index:1300;
+    background:var(--ink-2); border-left:1px solid var(--line-strong);
+    transform:translateX(100%); transition:transform .32s cubic-bezier(.22,.61,.36,1);
+    display:flex; flex-direction:column; box-shadow:-18px 0 50px rgba(0,0,0,.4);
+  }
+  .drawer.open{transform:translateX(0)}
+  .drawer-head{
+    padding:18px 20px 14px; border-bottom:1px solid var(--line); position:relative;
+  }
+  .drawer-head .bar{height:4px;width:46px;border-radius:2px;margin-bottom:13px}
+  .drawer-head .eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .drawer-head h1{font-family:var(--serif);font-weight:500;font-size:25px;margin:5px 0 0;line-height:1.05}
+  .drawer-head .loc{font-size:12px;color:var(--paper-dim);margin-top:6px}
+  .drawer-close{
+    position:absolute; top:16px; right:16px; width:30px;height:30px; border-radius:6px;
+    background:var(--panel); border:1px solid var(--line); color:var(--paper-dim); cursor:pointer; font-size:16px;
+  }
+  .drawer-close:hover{background:var(--panel-2);color:var(--paper)}
+
+  .stat-row{display:flex; border-bottom:1px solid var(--line)}
+  .stat-row .stat{flex:1; padding:12px 20px; border-left:1px solid var(--line)}
+  .stat-row .stat:first-child{border-left:0}
+  .stat .k{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .stat .v{font-family:var(--mono);font-size:16px;margin-top:4px}
+
+  .drawer-body{overflow-y:auto; flex:1; padding:4px 0 30px}
+  .drawer-body::-webkit-scrollbar{width:9px}
+  .drawer-body::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:5px}
+
+  .sec{padding:16px 20px 6px; border-bottom:1px solid var(--line)}
+  .sec:last-child{border-bottom:0}
+  .sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .sec-head h3{
+    font-family:var(--serif); font-weight:500; font-size:15px; margin:0; color:var(--paper);
+    letter-spacing:.02em;
+  }
+  .sec-head .sum{font-family:var(--mono); font-size:12px; color:var(--brass-hi)}
+
+  .kv{display:flex; justify-content:space-between; gap:14px; padding:5px 0; font-size:13px; border-bottom:1px dotted var(--line)}
+  .kv:last-child{border-bottom:0}
+  .kv .k{color:var(--muted)}
+  .kv .v{text-align:right; color:var(--paper)}
+  .kv .v.mono{font-family:var(--mono)}
+
+  .line-item{
+    display:grid; grid-template-columns:1fr auto; gap:3px 12px; padding:9px 0; border-bottom:1px dotted var(--line);
+  }
+  .line-item:last-child{border-bottom:0}
+  .line-item .li-name{font-size:13px;color:var(--paper)}
+  .line-item .li-fig{font-family:var(--mono);font-size:13px;color:var(--paper);text-align:right;align-self:center}
+  .line-item .li-sub{font-size:11px;color:var(--muted);grid-column:1/2}
+  .line-item .li-tag{
+    font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--brass-hi);
+    border:1px solid var(--line-strong);border-radius:3px;padding:1px 6px;justify-self:end;align-self:center
+  }
+  .li-tag.due{color:var(--danger);border-color:rgba(206,112,89,.4)}
+  .li-tag.paid{color:var(--ok);border-color:rgba(127,168,107,.4)}
+
+  .empty{font-size:12.5px;color:var(--muted);font-style:italic;padding:4px 0 10px}
+  .notes-text{font-size:13px;line-height:1.55;color:var(--paper-dim);white-space:pre-wrap}
+
+  .ref-img{width:100%;border-radius:6px;border:1px solid var(--line);display:block;margin-top:4px}
+  .ref-cap{font-size:11px;color:var(--muted);margin-top:6px}
+
+  /* Buttons */
+  .btn{
+    font-size:12.5px; border-radius:6px; padding:7px 13px; cursor:pointer; border:1px solid var(--line-strong);
+    background:var(--panel); color:var(--paper); transition:background .15s,border-color .15s;
+  }
+  .btn:hover{background:var(--panel-2)}
+  .btn.brass{background:var(--brass); color:#1a150c; border-color:var(--brass); font-weight:600}
+  .btn.brass:hover{background:var(--brass-hi)}
+  .btn.ghost{background:none}
+  .btn.sm{padding:5px 10px; font-size:11.5px}
+  .btn.danger{color:var(--danger); border-color:rgba(206,112,89,.4)}
+  .btn.danger:hover{background:rgba(206,112,89,.12)}
+  .drawer-actions{display:flex; gap:9px; padding:14px 20px; border-top:1px solid var(--line); background:var(--ink-2)}
+  .drawer-actions .btn{flex:1; text-align:center}
+
+  /* Forms */
+  .field{margin-bottom:12px}
+  .field > label{display:block; font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); margin-bottom:5px}
+  .input, .select, .textarea{
+    width:100%; background:var(--panel); border:1px solid var(--line-strong); border-radius:6px;
+    color:var(--paper); font-family:var(--sans); font-size:13px; padding:8px 10px;
+  }
+  .input.mono{font-family:var(--mono)}
+  .textarea{resize:vertical; min-height:70px; line-height:1.5}
+  .input:focus,.select:focus,.textarea:focus{outline:none; border-color:var(--brass)}
+  .row-grid{display:grid; gap:8px; grid-template-columns:1fr; padding:11px; border:1px solid var(--line); border-radius:7px; margin-bottom:9px; background:rgba(0,0,0,.12)}
+  .row-grid .two{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .row-grid .rm{justify-self:end}
+  .add-row{width:100%; border:1px dashed var(--line-strong); background:none; color:var(--paper-dim); border-radius:7px; padding:9px; cursor:pointer; font-size:12.5px}
+  .add-row:hover{border-color:var(--brass); color:var(--brass-hi)}
+
+  /* Boundary editor toolbar */
+  .bedit{
+    position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:1400;
+    display:none; align-items:center; gap:12px; padding:11px 16px;
+    background:rgba(21,18,13,.94); border:1px solid var(--brass); border-radius:10px;
+    box-shadow:0 10px 40px rgba(0,0,0,.5);
+  }
+  .bedit.show{display:flex}
+  .bedit .hint{font-size:12px; color:var(--paper-dim); max-width:230px; line-height:1.35}
+  .bedit .hint b{color:var(--brass-hi); font-weight:600}
+  .vtx{
+    width:14px;height:14px;border-radius:50%;background:var(--brass);
+    border:2px solid #1a150c; box-shadow:0 1px 4px rgba(0,0,0,.5); cursor:grab;
+  }
+  .vtx:active{cursor:grabbing}
+
+  /* Compass (signature, restrained) */
+  .compass{position:fixed; right:16px; bottom:20px; z-index:1050; opacity:.78; pointer-events:none}
+  .drawer.open ~ .compass{right:calc(var(--drawer-w) + 16px)}
+
+  /* Toast */
+  .toast{
+    position:fixed; left:50%; top:78px; transform:translate(-50%,-12px); z-index:1600;
+    background:var(--panel-2); border:1px solid var(--line-strong); color:var(--paper);
+    padding:10px 16px; border-radius:8px; font-size:13px; opacity:0; pointer-events:none;
+    transition:opacity .2s,transform .2s; box-shadow:0 8px 30px rgba(0,0,0,.4);
+  }
+  .toast.show{opacity:1; transform:translate(-50%,0)}
+
+  @media (max-width:820px){
+    .ledger .col:nth-child(n+4){display:none}
+    .brandmark .sub{display:none}
+  }
+  @media (max-width:680px){
+    .app-header{height:56px; gap:12px; padding:0 12px}
+    #map{inset:56px 0 0 0}
+    .brandmark .wordmark{font-size:17px}
+    .brandmark .glyph{font-size:20px; padding:4px 6px}
+    .ledger{display:none}
+    .holdings{top:auto; bottom:0; left:0; right:0; width:auto; border-radius:12px 12px 0 0; max-height:34vh; overflow:auto}
+    :root{--drawer-w:100vw}
+    .drawer{top:auto; height:86vh; width:100vw; border-left:0; border-top:1px solid var(--line-strong);
+      border-radius:14px 14px 0 0; transform:translateY(100%)}
+    .drawer.open{transform:translateY(0)}
+    .compass{display:none}
+    .drawer.open ~ .compass{right:16px}
+  }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brandmark">
+    <span class="glyph">PT</span>
+    <div>
+      <div class="wordmark">Perpetual <em>Trust</em></div>
+      <div class="sub">Land Holdings · Richland County, IL</div>
+    </div>
+  </div>
+
+  <div class="ledger" id="ledger">
+    <div class="col"><span class="k">Holdings</span><span class="v" id="led-parcels">—</span></div>
+    <div class="col"><span class="k">Total Acreage</span><span class="v" id="led-acres">—</span></div>
+    <div class="col"><span class="k">Improvements</span><span class="v" id="led-impr">—</span></div>
+    <div class="col"><span class="k">Income / yr</span><span class="v pos" id="led-income">—</span></div>
+    <div class="col"><span class="k">Taxes / yr</span><span class="v neg" id="led-tax">—</span></div>
+    <div class="col"><span class="k">Net / yr</span><span class="v" id="led-net">—</span></div>
+  </div>
+
+  <div class="status-chip" id="status"><span class="dot"></span><span id="status-text">Local only</span></div>
+</header>
+
+<div id="map"></div>
+
+<section class="holdings" aria-label="Holdings">
+  <h2>Parcels</h2>
+  <div id="hold-list"></div>
+</section>
+
+<aside class="drawer" id="drawer" aria-hidden="true"></aside>
+
+<div class="bedit" id="bedit">
+  <div class="hint" id="bedit-hint"><b>Click the map</b> to drop boundary points · drag a point to move it</div>
+  <button class="btn sm ghost" id="be-undo">Undo</button>
+  <button class="btn sm ghost" id="be-clear">Clear</button>
+  <button class="btn sm" id="be-cancel">Cancel</button>
+  <button class="btn sm brass" id="be-save">Save boundary</button>
+</div>
+
+<svg class="compass" width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">
+  <circle cx="24" cy="24" r="21" fill="none" stroke="#C9A24B" stroke-opacity=".5"/>
+  <polygon points="24,6 28,24 24,21 20,24" fill="#E6C879"/>
+  <polygon points="24,42 20,24 24,27 28,24" fill="#9A8C70"/>
+  <text x="24" y="14.5" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="9" fill="#ECE3CF">N</text>
+</svg>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, doc, setDoc, onSnapshot
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ============================================================
+   1)  CONFIG  —  fill this in to enable cloud saving
+   ------------------------------------------------------------
+   Easiest path: reuse your existing quality-audit project.
+   Paste that project's web config here and the app will store
+   parcel data in a NEW, separate "trust_parcels" collection so
+   nothing collides with your audit data.
+   Until this is filled in, the app runs in LOCAL-ONLY mode:
+   everything works, but edits live only for the session.
+   ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "PASTE_API_KEY",
+  authDomain: "PASTE_PROJECT.firebaseapp.com",
+  projectId: "PASTE_PROJECT_ID",
+  storageBucket: "PASTE_PROJECT.appspot.com",
+  messagingSenderId: "PASTE_SENDER_ID",
+  appId: "PASTE_APP_ID"
+};
+const COLLECTION = "trust_parcels";   // Firestore collection name
+const META_DOC   = "trust_meta";       // stores default map view
+
+/* ============================================================
+   2)  SEED DATA  — the three known holdings
+   Boundaries below are approximate starting rectangles. Open a
+   parcel, hit "Edit boundary", and trace the real lines on the
+   satellite image — it saves to Firestore and is permanent.
+   Acreage / location / reference image are pre-filled.
+   ============================================================ */
+const DEFAULT_VIEW = { center:[38.7965,-88.0505], zoom:15 };
+
+const DEFAULT_PARCELS = [
+  {
+    id:"northwoods",
+    name:"North Woods & Pond",
+    acres:26.65,
+    parcelId:"",
+    location:"Richland County, IL · E of County Rd 1150",
+    color:"#7BA05E",
+    image:"assets/parcel-northwoods-2665.jpg",
+    boundary:[
+      {lat:38.80048,lng:-88.04890},{lat:38.80048,lng:-88.04510},
+      {lat:38.79752,lng:-88.04510},{lat:38.79752,lng:-88.04890}
+    ],
+    structures:[], income:[], taxes:[], notes:""
+  },
+  {
+    id:"southfield",
+    name:"South Field",
+    acres:49.54,
+    parcelId:"",
+    location:"Richland County, IL · S of E Elbow Ln, along Rt 130",
+    color:"#D2A23E",
+    image:"assets/parcel-southfield-4954.jpg",
+    boundary:[
+      {lat:38.79252,lng:-88.05059},{lat:38.79252,lng:-88.04541},
+      {lat:38.78848,lng:-88.04541},{lat:38.78848,lng:-88.05059}
+    ],
+    structures:[], income:[], taxes:[], notes:""
+  },
+  {
+    id:"eastfield",
+    name:"East Field",
+    acres:12.13,
+    parcelId:"",
+    location:"Richland County, IL · N of E Elbow Ln",
+    color:"#5E87A6",
+    image:"assets/parcel-eastfield-1213.jpg",
+    boundary:[
+      {lat:38.80180,lng:-88.05728},{lat:38.80180,lng:-88.05472},
+      {lat:38.79980,lng:-88.05472},{lat:38.79980,lng:-88.05728}
+    ],
+    structures:[], income:[], taxes:[], notes:""
+  }
+];
+
+/* ============================================================
+   3)  App state
+   ============================================================ */
+let db=null, cloud=false;
+let parcels = clone(DEFAULT_PARCELS);          // working merged list
+let view = clone(DEFAULT_VIEW);
+let selectedId=null, editing=false;
+let beActive=false, beParcel=null, beLatLngs=[], beVertexMarkers=[], bePoly=null;
+
+const layers={};   // id -> {poly, label}
+const $ = s=>document.querySelector(s);
+const usd = n => "$"+Math.round(Number(n)||0).toLocaleString("en-US");
+const num = n => (Number(n)||0).toLocaleString("en-US");
+function clone(o){return JSON.parse(JSON.stringify(o));}
+
+/* ============================================================
+   4)  Map  (Esri World Imagery + road/label reference)
+   ============================================================ */
+const map = L.map("map",{center:view.center,zoom:view.zoom,zoomControl:true,attributionControl:true});
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{
+  maxZoom:19, attribution:"Imagery &copy; Esri, Maxar, Earthstar Geographics"
+}).addTo(map);
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",{
+  maxZoom:19, opacity:.85
+}).addTo(map);
+L.control.scale({imperial:true,metric:false,position:"bottomleft"}).addTo(map);
+
+map.on("click",e=>{ if(beActive) addBoundaryPoint(e.latlng); });
+
+/* ============================================================
+   5)  Firebase init  (graceful — local mode if not configured)
+   ============================================================ */
+(function initCloud(){
+  const ok = FIREBASE_CONFIG.projectId && !FIREBASE_CONFIG.projectId.startsWith("PASTE");
+  if(!ok){ setStatus(false); renderAll(); return; }
+  try{
+    const app=initializeApp(FIREBASE_CONFIG);
+    db=getFirestore(app); cloud=true; setStatus(true);
+    // live parcels
+    onSnapshot(collection(db,COLLECTION),snap=>{
+      const overrides={};
+      snap.forEach(d=>{ if(d.id!==META_DOC) overrides[d.id]=d.data(); });
+      parcels = DEFAULT_PARCELS.map(def=>{
+        const o=overrides[def.id]||{};
+        return Object.assign(clone(def),o,{id:def.id});
+      });
+      // include any extra parcels added later that aren't in defaults
+      Object.keys(overrides).forEach(id=>{
+        if(!DEFAULT_PARCELS.find(d=>d.id===id))
+          parcels.push(Object.assign({structures:[],income:[],taxes:[]},overrides[id],{id}));
+      });
+      renderAll();
+      if(selectedId && !beActive) renderDrawer();
+    },err=>{ console.error(err); setStatus(false,"Cloud error — local only"); });
+    // map view meta
+    onSnapshot(doc(db,COLLECTION,META_DOC),d=>{
+      if(d.exists() && d.data().center){ view=d.data(); }
+    });
+  }catch(err){ console.error(err); setStatus(false,"Local only"); renderAll(); }
+})();
+
+function setStatus(live,txt){
+  const c=$("#status");
+  c.classList.toggle("live",!!live);
+  $("#status-text").textContent = txt || (live? "Saved to cloud":"Local only");
+}
+
+/* ============================================================
+   6)  Computed totals  (the ledger)
+   ============================================================ */
+function structuresValue(p){return (p.structures||[]).reduce((s,x)=>s+(Number(x.value)||0),0);}
+function annualIncome(p){
+  return (p.income||[]).reduce((s,x)=>{
+    const a=Number(x.amount)||0;
+    if(x.frequency==="monthly")return s+a*12;
+    if(x.frequency==="annual")return s+a;
+    return s; // one-time excluded from yearly run-rate
+  },0);
+}
+function currentTax(p){
+  const t=(p.taxes||[]).slice().sort((a,b)=>(Number(b.year)||0)-(Number(a.year)||0));
+  return t.length? (Number(t[0].amount)||0):0;
+}
+function renderLedger(){
+  const tAc=parcels.reduce((s,p)=>s+(Number(p.acres)||0),0);
+  const tImpr=parcels.reduce((s,p)=>s+structuresValue(p),0);
+  const tInc=parcels.reduce((s,p)=>s+annualIncome(p),0);
+  const tTax=parcels.reduce((s,p)=>s+currentTax(p),0);
+  const net=tInc-tTax;
+  $("#led-parcels").textContent=parcels.length;
+  $("#led-acres").textContent=tAc.toFixed(2);
+  $("#led-impr").textContent=usd(tImpr);
+  $("#led-income").textContent=usd(tInc);
+  $("#led-tax").textContent=usd(tTax);
+  const n=$("#led-net"); n.textContent=usd(net);
+  n.className="v "+(net>=0?"pos":"neg");
+}
+
+/* ============================================================
+   7)  Map layers + holdings list
+   ============================================================ */
+function centroid(b){
+  const ll=b.map(p=>[p.lat,p.lng]);
+  const lat=ll.reduce((s,x)=>s+x[0],0)/ll.length;
+  const lng=ll.reduce((s,x)=>s+x[1],0)/ll.length;
+  return [lat,lng];
+}
+function drawParcels(){
+  Object.values(layers).forEach(l=>{map.removeLayer(l.poly); if(l.label)map.removeLayer(l.label);});
+  for(const k in layers) delete layers[k];
+  parcels.forEach(p=>{
+    if(beActive && beParcel===p.id) return; // hidden while editing its boundary
+    const latlngs=(p.boundary||[]).map(v=>[v.lat,v.lng]);
+    if(latlngs.length<3) return;
+    const sel = p.id===selectedId;
+    const poly=L.polygon(latlngs,{
+      color:p.color, weight:sel?3:2, opacity:.95,
+      fillColor:p.color, fillOpacity:sel?.34:.18
+    }).addTo(map);
+    poly.on("click",()=>selectParcel(p.id,true));
+    const c=centroid(p.boundary);
+    const label=L.marker(c,{interactive:false,icon:L.divIcon({
+      className:"plat-tag",
+      html:`<div class="tag"><div class="nm">${esc(p.name)}</div><div class="ac">${(Number(p.acres)||0).toFixed(2)} ac</div></div>`
+    })}).addTo(map);
+    layers[p.id]={poly,label};
+  });
+}
+function renderHoldings(){
+  const wrap=$("#hold-list"); wrap.innerHTML="";
+  parcels.slice().sort((a,b)=>(Number(b.acres)||0)-(Number(a.acres)||0)).forEach(p=>{
+    const b=document.createElement("button");
+    b.className="hold-item"+(p.id===selectedId?" active":"");
+    b.innerHTML=`<span class="swatch" style="background:${p.color}"></span>
+      <span class="meta"><span class="nm">${esc(p.name)}</span><br><span class="ac">${(Number(p.acres)||0).toFixed(2)} acres</span></span>`;
+    b.onclick=()=>selectParcel(p.id,true);
+    wrap.appendChild(b);
+  });
+}
+function renderAll(){ renderLedger(); drawParcels(); renderHoldings(); }
+
+/* ============================================================
+   8)  Select + fly
+   ============================================================ */
+function selectParcel(id,fly){
+  selectedId=id; editing=false;
+  drawParcels(); renderHoldings(); openDrawer(); renderDrawer();
+  if(fly){
+    const p=parcels.find(x=>x.id===id);
+    if(p && p.boundary && p.boundary.length>=3){
+      map.flyToBounds(L.latLngBounds(p.boundary.map(v=>[v.lat,v.lng])),{padding:[60,60],maxZoom:17,duration:.6});
+    }
+  }
+}
+
+/* ============================================================
+   9)  Drawer — read + edit views
+   ============================================================ */
+function openDrawer(){const d=$("#drawer");d.classList.add("open");d.setAttribute("aria-hidden","false");}
+function closeDrawer(){const d=$("#drawer");d.classList.remove("open");d.setAttribute("aria-hidden","true");selectedId=null;editing=false;drawParcels();renderHoldings();}
+
+function renderDrawer(){
+  const p=parcels.find(x=>x.id===selectedId); if(!p)return;
+  editing ? renderEdit(p) : renderRead(p);
+}
+
+function renderRead(p){
+  const impr=structuresValue(p), inc=annualIncome(p), tax=currentTax(p), net=inc-tax;
+  const d=$("#drawer");
+  d.innerHTML=`
+    <div class="drawer-head">
+      <div class="bar" style="background:${p.color}"></div>
+      <div class="eyebrow">Parcel · Richland County</div>
+      <h1>${esc(p.name)}</h1>
+      <div class="loc">${esc(p.location||"")}</div>
+      <button class="drawer-close" id="dclose" aria-label="Close">✕</button>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat"><div class="k">Acreage</div><div class="v">${(Number(p.acres)||0).toFixed(2)}</div></div>
+      <div class="stat"><div class="k">Income / yr</div><div class="v" style="color:var(--ok)">${usd(inc)}</div></div>
+      <div class="stat"><div class="k">Net / yr</div><div class="v" style="color:${net>=0?'var(--ok)':'var(--danger)'}">${usd(net)}</div></div>
+    </div>
+
+    <div class="drawer-body">
+      <div class="sec">
+        <div class="sec-head"><h3>Overview</h3></div>
+        <div class="kv"><span class="k">Parcel ID (APN)</span><span class="v mono">${esc(p.parcelId)||'—'}</span></div>
+        <div class="kv"><span class="k">Improvements value</span><span class="v mono">${usd(impr)}</span></div>
+        <div class="kv"><span class="k">Current tax / yr</span><span class="v mono">${usd(tax)}</span></div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><h3>Structures</h3><span class="sum">${usd(impr)}</span></div>
+        ${(p.structures||[]).length? p.structures.map(s=>`
+          <div class="line-item">
+            <div class="li-name">${esc(s.name)||'Structure'}</div>
+            <div class="li-fig">${usd(s.value)}</div>
+            <div class="li-sub">${[s.type,s.year].filter(Boolean).map(esc).join(' · ')}${s.notes?` — ${esc(s.notes)}`:''}</div>
+          </div>`).join('') : `<div class="empty">No structures recorded yet.</div>`}
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><h3>Income</h3><span class="sum">${usd(inc)}/yr</span></div>
+        ${(p.income||[]).length? p.income.map(i=>`
+          <div class="line-item">
+            <div class="li-name">${esc(i.source)||'Income'}</div>
+            <div class="li-fig">${usd(i.amount)}</div>
+            <span class="li-tag">${esc(i.frequency)||'annual'}</span>
+            <div class="li-sub">${esc(i.notes||'')}</div>
+          </div>`).join('') : `<div class="empty">No income recorded yet.</div>`}
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><h3>Taxes</h3><span class="sum">${usd(tax)}/yr</span></div>
+        ${(p.taxes||[]).length? p.taxes.slice().sort((a,b)=>(Number(b.year)||0)-(Number(a.year)||0)).map(t=>`
+          <div class="line-item">
+            <div class="li-name">Tax year ${esc(t.year)||'—'}</div>
+            <div class="li-fig">${usd(t.amount)}</div>
+            <span class="li-tag ${t.status==='paid'?'paid':t.status==='due'?'due':''}">${esc(t.status)||'—'}</span>
+            <div class="li-sub">${esc(t.notes||'')}</div>
+          </div>`).join('') : `<div class="empty">No tax records yet.</div>`}
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><h3>Notes</h3></div>
+        ${p.notes? `<div class="notes-text">${esc(p.notes)}</div>` : `<div class="empty">No notes yet.</div>`}
+      </div>
+
+      ${p.image? `<div class="sec">
+        <div class="sec-head"><h3>Reference survey</h3></div>
+        <img class="ref-img" src="${p.image}" alt="Survey reference for ${esc(p.name)}" loading="lazy">
+        <div class="ref-cap">Original parcel reference image.</div>
+      </div>`:''}
+    </div>
+
+    <div class="drawer-actions">
+      <button class="btn ghost" id="edit-bound">Edit boundary</button>
+      <button class="btn brass" id="edit-parcel">Edit details</button>
+    </div>`;
+  $("#dclose").onclick=closeDrawer;
+  $("#edit-parcel").onclick=()=>{editing=true;renderDrawer();};
+  $("#edit-bound").onclick=()=>startBoundaryEdit(p.id);
+}
+
+function renderEdit(p){
+  const d=$("#drawer");
+  d.innerHTML=`
+    <div class="drawer-head">
+      <div class="bar" style="background:${p.color}"></div>
+      <div class="eyebrow">Editing parcel</div>
+      <h1 style="font-size:20px">${esc(p.name)}</h1>
+      <button class="drawer-close" id="dclose" aria-label="Close">✕</button>
+    </div>
+    <div class="drawer-body" id="edit-body">
+      <div class="sec">
+        <div class="sec-head"><h3>Overview</h3></div>
+        <div class="field"><label>Name</label><input class="input" id="f-name" value="${attr(p.name)}"></div>
+        <div class="row-grid" style="border:0;padding:0;background:none">
+          <div class="two">
+            <div class="field"><label>Acreage</label><input class="input mono" id="f-acres" type="number" step="0.01" value="${attr(p.acres)}"></div>
+            <div class="field"><label>Map color</label><input class="input" id="f-color" type="color" value="${attr(p.color)}" style="padding:3px;height:38px"></div>
+          </div>
+        </div>
+        <div class="field"><label>Parcel ID (APN)</label><input class="input mono" id="f-pid" value="${attr(p.parcelId)}"></div>
+        <div class="field"><label>Location / description</label><input class="input" id="f-loc" value="${attr(p.location)}"></div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><h3>Structures</h3></div>
+        <div id="rows-structures"></div>
+        <button class="add-row" data-add="structures">+ Add structure</button>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><h3>Income</h3></div>
+        <div id="rows-income"></div>
+        <button class="add-row" data-add="income">+ Add income source</button>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><h3>Taxes</h3></div>
+        <div id="rows-taxes"></div>
+        <button class="add-row" data-add="taxes">+ Add tax year</button>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><h3>Notes</h3></div>
+        <textarea class="textarea" id="f-notes" placeholder="Anything worth keeping with this parcel…">${esc(p.notes||'')}</textarea>
+      </div>
+    </div>
+    <div class="drawer-actions">
+      <button class="btn ghost" id="cancel-edit">Cancel</button>
+      <button class="btn brass" id="save-edit">Save parcel</button>
+    </div>`;
+
+  const draft=clone(p);
+  renderRows("structures",draft.structures);
+  renderRows("income",draft.income);
+  renderRows("taxes",draft.taxes);
+
+  d.querySelectorAll("[data-add]").forEach(btn=>btn.onclick=()=>{
+    const key=btn.dataset.add;
+    draft[key]=collectRows(key,draft[key]);          // keep current edits
+    draft[key].push(blankRow(key));
+    renderRows(key,draft[key]);
+  });
+
+  $("#dclose").onclick=closeDrawer;
+  $("#cancel-edit").onclick=()=>{editing=false;renderDrawer();};
+  $("#save-edit").onclick=()=>{
+    const updated=clone(p);
+    updated.name=$("#f-name").value.trim()||p.name;
+    updated.acres=parseFloat($("#f-acres").value)||0;
+    updated.color=$("#f-color").value;
+    updated.parcelId=$("#f-pid").value.trim();
+    updated.location=$("#f-loc").value.trim();
+    updated.notes=$("#f-notes").value;
+    updated.structures=collectRows("structures",draft.structures);
+    updated.income=collectRows("income",draft.income);
+    updated.taxes=collectRows("taxes",draft.taxes);
+    saveParcel(updated);
+  };
+
+  // boundary edit holder
+  function renderRows(key,arr){
+    const host=$("#rows-"+key); host.innerHTML="";
+    (arr||[]).forEach((r,idx)=>host.appendChild(rowEl(key,r,idx,arr)));
+  }
+  function rowEl(key,r,idx,arr){
+    const wrap=document.createElement("div"); wrap.className="row-grid"; wrap.dataset.idx=idx;
+    if(key==="structures"){
+      wrap.innerHTML=`
+        <input class="input r-name" placeholder="Name (e.g. Barn, Home)" value="${attr(r.name)}">
+        <div class="two">
+          <input class="input r-type" placeholder="Type" value="${attr(r.type)}">
+          <input class="input r-year" placeholder="Year" value="${attr(r.year)}">
+        </div>
+        <div class="two">
+          <input class="input mono r-value" type="number" placeholder="Value $" value="${attr(r.value)}">
+          <input class="input r-notes" placeholder="Notes" value="${attr(r.notes)}">
+        </div>`;
+    }else if(key==="income"){
+      wrap.innerHTML=`
+        <input class="input r-source" placeholder="Source (e.g. Cash rent, CRP)" value="${attr(r.source)}">
+        <div class="two">
+          <input class="input mono r-amount" type="number" placeholder="Amount $" value="${attr(r.amount)}">
+          <select class="select r-frequency">
+            ${["annual","monthly","one-time"].map(f=>`<option ${r.frequency===f?'selected':''}>${f}</option>`).join('')}
+          </select>
+        </div>
+        <input class="input r-notes" placeholder="Notes" value="${attr(r.notes)}">`;
+    }else{ // taxes
+      wrap.innerHTML=`
+        <div class="two">
+          <input class="input mono r-year" type="number" placeholder="Tax year" value="${attr(r.year)}">
+          <input class="input mono r-amount" type="number" placeholder="Amount $" value="${attr(r.amount)}">
+        </div>
+        <div class="two">
+          <select class="select r-status">
+            ${["","paid","due"].map(s=>`<option ${r.status===s?'selected':''} value="${s}">${s||'—'}</option>`).join('')}
+          </select>
+          <input class="input r-notes" placeholder="Notes" value="${attr(r.notes)}">
+        </div>`;
+    }
+    const rm=document.createElement("button");
+    rm.className="btn sm danger rm"; rm.textContent="Remove";
+    rm.onclick=()=>{ draft[key]=collectRows(key,draft[key]); draft[key].splice(idx,1); renderRows(key,draft[key]); };
+    wrap.appendChild(rm);
+    return wrap;
+  }
+  function collectRows(key,fallback){
+    const host=$("#rows-"+key); if(!host) return fallback||[];
+    const out=[];
+    host.querySelectorAll(".row-grid").forEach(w=>{
+      const g=c=>{const e=w.querySelector(c);return e?e.value:"";};
+      if(key==="structures") out.push({name:g(".r-name"),type:g(".r-type"),year:g(".r-year"),value:num0(g(".r-value")),notes:g(".r-notes")});
+      else if(key==="income") out.push({source:g(".r-source"),amount:num0(g(".r-amount")),frequency:g(".r-frequency"),notes:g(".r-notes")});
+      else out.push({year:g(".r-year"),amount:num0(g(".r-amount")),status:g(".r-status"),notes:g(".r-notes")});
+    });
+    return out;
+  }
+  function num0(v){const n=parseFloat(v);return isNaN(n)?0:n;}
+}
+function blankRow(key){
+  if(key==="structures")return{name:"",type:"",year:"",value:0,notes:""};
+  if(key==="income")return{source:"",amount:0,frequency:"annual",notes:""};
+  return{year:new Date().getFullYear(),amount:0,status:"",notes:""};
+}
+
+/* ============================================================
+   10)  Save parcel
+   ============================================================ */
+async function saveParcel(updated){
+  // optimistic local update
+  const i=parcels.findIndex(x=>x.id===updated.id);
+  if(i>=0) parcels[i]=updated;
+  editing=false; renderAll(); renderDrawer();
+  if(!cloud){ toast("Saved locally (add Firebase to keep)"); return; }
+  try{
+    const {id,...data}=updated; data.updatedAt=Date.now();
+    await setDoc(doc(db,COLLECTION,id),data,{merge:true});
+    toast("Saved to cloud");
+  }catch(err){ console.error(err); toast("Save failed — check rules/config"); }
+}
+
+/* ============================================================
+   11)  Boundary editor
+   ============================================================ */
+function startBoundaryEdit(id){
+  const p=parcels.find(x=>x.id===id); if(!p)return;
+  beActive=true; beParcel=id;
+  beLatLngs=(p.boundary||[]).map(v=>[v.lat,v.lng]);
+  $("#drawer").classList.remove("open");
+  $("#bedit").classList.add("show");
+  drawParcels();              // hides this parcel's static layer
+  redrawBoundaryEditor();
+  if(beLatLngs.length>=2) map.fitBounds(L.latLngBounds(beLatLngs),{padding:[80,80]});
+}
+function addBoundaryPoint(latlng){ beLatLngs.push([latlng.lat,latlng.lng]); redrawBoundaryEditor(); }
+function redrawBoundaryEditor(){
+  if(bePoly){map.removeLayer(bePoly);bePoly=null;}
+  beVertexMarkers.forEach(m=>map.removeLayer(m)); beVertexMarkers=[];
+  const p=parcels.find(x=>x.id===beParcel);
+  if(beLatLngs.length>=2){
+    bePoly=L.polygon(beLatLngs,{color:p.color,weight:2,dashArray:"6 5",fillColor:p.color,fillOpacity:.15}).addTo(map);
+  }
+  beLatLngs.forEach((ll,idx)=>{
+    const m=L.marker(ll,{draggable:true,icon:L.divIcon({className:"",html:`<div class="vtx"></div>`,iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map);
+    m.on("drag",e=>{const c=e.target.getLatLng();beLatLngs[idx]=[c.lat,c.lng];if(bePoly)bePoly.setLatLngs(beLatLngs);});
+    m.on("dragend",redrawBoundaryEditor);
+    m.on("contextmenu",()=>{beLatLngs.splice(idx,1);redrawBoundaryEditor();});
+    beVertexMarkers.push(m);
+  });
+  $("#bedit-hint").innerHTML = beLatLngs.length<3
+    ? `<b>Click the map</b> to drop boundary points · need at least 3`
+    : `${beLatLngs.length} points · drag to adjust · right-click a point to delete`;
+}
+function endBoundaryEdit(){
+  beActive=false; beParcel=null; beLatLngs=[];
+  if(bePoly){map.removeLayer(bePoly);bePoly=null;}
+  beVertexMarkers.forEach(m=>map.removeLayer(m)); beVertexMarkers=[];
+  $("#bedit").classList.remove("show");
+  drawParcels();
+  if(selectedId){openDrawer();renderDrawer();}
+}
+$("#be-undo").onclick=()=>{beLatLngs.pop();redrawBoundaryEditor();};
+$("#be-clear").onclick=()=>{beLatLngs=[];redrawBoundaryEditor();};
+$("#be-cancel").onclick=endBoundaryEdit;
+$("#be-save").onclick=()=>{
+  if(beLatLngs.length<3){toast("Need at least 3 points");return;}
+  const p=clone(parcels.find(x=>x.id===beParcel));
+  p.boundary=beLatLngs.map(ll=>({lat:ll[0],lng:ll[1]}));
+  endBoundaryEdit();
+  saveParcel(p);
+};
+
+/* ============================================================
+   12)  Helpers
+   ============================================================ */
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function attr(s){return esc(s).replace(/"/g,"&quot;");}
+let toastT=null;
+function toast(msg){const t=$("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),2400);}
+
+// keyboard: Esc closes
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ if(beActive)endBoundaryEdit(); else if(selectedId)closeDrawer(); }});
+
+renderAll();
+</script>
+</body>
+</html>
