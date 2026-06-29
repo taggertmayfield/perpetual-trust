@@ -327,16 +327,16 @@ import {
   getFirestore, collection, doc, setDoc, onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* ============================================================
-   1)  CONFIG  —  fill this in to enable cloud saving
-   ------------------------------------------------------------
-   Easiest path: reuse your existing quality-audit project.
-   Paste that project's web config here and the app will store
-   parcel data in a NEW, separate "trust_parcels" collection so
-   nothing collides with your audit data.
-   Until this is filled in, the app runs in LOCAL-ONLY mode:
-   everything works, but edits live only for the session.
-   ============================================================ */
+jsconst FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDs0e7-8J_rhcrYY8eZlF16ogLH6PT6LSA",
+  authDomain: "perpetual-trust.firebaseapp.com",
+  projectId: "perpetual-trust",
+  storageBucket: "perpetual-trust.firebasestorage.app",
+  messagingSenderId: "569506116771",
+  appId: "1:569506116771:web:5a6c23bdac326b51b7bb16"
+};
+const COLLECTION = "trust_parcels";   // leave as-is
+const META_DOC   = "trust_meta";       // leave as-is
 const FIREBASE_CONFIG = {
   apiKey: "PASTE_API_KEY",
   authDomain: "PASTE_PROJECT.firebaseapp.com",
