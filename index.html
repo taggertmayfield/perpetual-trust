@@ -232,6 +232,11 @@
     border:2px solid #1a150c; box-shadow:0 1px 4px rgba(0,0,0,.5); cursor:grab;
   }
   .vtx:active{cursor:grabbing}
+  .vtx-mid{
+    width:12px;height:12px;border-radius:50%;
+    background:rgba(201,162,75,.30); border:2px dashed var(--brass);
+    box-shadow:0 1px 4px rgba(0,0,0,.5); cursor:copy;
+  }
 
   /* Compass (signature, restrained) */
   .compass{position:fixed; right:16px; bottom:20px; z-index:1050; opacity:.78; pointer-events:none}
@@ -404,7 +409,7 @@ let db=null, cloud=false;
 let parcels = clone(DEFAULT_PARCELS);          // working merged list
 let view = clone(DEFAULT_VIEW);
 let selectedId=null, editing=false;
-let beActive=false, beParcel=null, beLatLngs=[], beVertexMarkers=[], bePoly=null;
+let beActive=false, beParcel=null, beLatLngs=[], beVertexMarkers=[], beMidMarkers=[], bePoly=null;
 
 const layers={};   // id -> {poly, label}
 const $ = s=>document.querySelector(s);
@@ -517,11 +522,14 @@ function drawParcels(){
       fillColor:p.color, fillOpacity:sel?.34:.18
     }).addTo(map);
     poly.on("click",()=>selectParcel(p.id,true));
-    const c=centroid(p.boundary);
-    const label=L.marker(c,{interactive:false,icon:L.divIcon({
-      className:"plat-tag",
-      html:`<div class="tag"><div class="nm">${esc(p.name)}</div><div class="ac">${(Number(p.acres)||0).toFixed(2)} ac</div></div>`
-    })}).addTo(map);
+    let label=null;
+    if(sel){
+      const c=centroid(p.boundary);
+      label=L.marker(c,{interactive:false,icon:L.divIcon({
+        className:"plat-tag",
+        html:`<div class="tag"><div class="nm">${esc(p.name)}</div><div class="ac">${(Number(p.acres)||0).toFixed(2)} ac</div></div>`
+      })}).addTo(map);
+    }
     layers[p.id]={poly,label};
   });
 }
@@ -820,25 +828,43 @@ function addBoundaryPoint(latlng){ beLatLngs.push([latlng.lat,latlng.lng]); redr
 function redrawBoundaryEditor(){
   if(bePoly){map.removeLayer(bePoly);bePoly=null;}
   beVertexMarkers.forEach(m=>map.removeLayer(m)); beVertexMarkers=[];
+  beMidMarkers.forEach(m=>map.removeLayer(m)); beMidMarkers=[];
   const p=parcels.find(x=>x.id===beParcel);
   if(beLatLngs.length>=2){
     bePoly=L.polygon(beLatLngs,{color:p.color,weight:2,dashArray:"6 5",fillColor:p.color,fillOpacity:.15}).addTo(map);
   }
+  // Solid corner points — drag to move, right-click to delete
   beLatLngs.forEach((ll,idx)=>{
     const m=L.marker(ll,{draggable:true,icon:L.divIcon({className:"",html:`<div class="vtx"></div>`,iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map);
     m.on("drag",e=>{const c=e.target.getLatLng();beLatLngs[idx]=[c.lat,c.lng];if(bePoly)bePoly.setLatLngs(beLatLngs);});
     m.on("dragend",redrawBoundaryEditor);
-    m.on("contextmenu",()=>{beLatLngs.splice(idx,1);redrawBoundaryEditor();});
+    m.on("contextmenu",()=>{ if(beLatLngs.length<=3)return; beLatLngs.splice(idx,1); redrawBoundaryEditor(); });
     beVertexMarkers.push(m);
   });
+  // Hollow edge points — drag (or tap) to insert a new corner, so you can
+  // pull any edge out into a non-rectangular shape
+  const n=beLatLngs.length;
+  const edges = n>=3 ? n : (n===2 ? 1 : 0);
+  for(let i=0;i<edges;i++){
+    const j=(i+1)%n, a=beLatLngs[i], b=beLatLngs[j];
+    const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+    const mk=L.marker(mid,{draggable:true,icon:L.divIcon({className:"",html:`<div class="vtx-mid"></div>`,iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map);
+    let at=null;
+    mk.on("dragstart",e=>{ at=(j===0)?beLatLngs.length:i+1; const c=e.target.getLatLng(); beLatLngs.splice(at,0,[c.lat,c.lng]); if(bePoly)bePoly.setLatLngs(beLatLngs); });
+    mk.on("drag",e=>{ if(at==null)return; const c=e.target.getLatLng(); beLatLngs[at]=[c.lat,c.lng]; if(bePoly)bePoly.setLatLngs(beLatLngs); });
+    mk.on("dragend",()=>{ at=null; redrawBoundaryEditor(); });
+    mk.on("click",e=>{ const k=(j===0)?beLatLngs.length:i+1; const c=e.target.getLatLng(); beLatLngs.splice(k,0,[c.lat,c.lng]); redrawBoundaryEditor(); });
+    beMidMarkers.push(mk);
+  }
   $("#bedit-hint").innerHTML = beLatLngs.length<3
-    ? `<b>Click the map</b> to drop boundary points · need at least 3`
-    : `${beLatLngs.length} points · drag to adjust · right-click a point to delete`;
+    ? `<b>Click the map</b> to drop points · need at least 3`
+    : `${beLatLngs.length} points · drag a <b>solid</b> dot to move · drag a <b>hollow</b> dot to add a corner · right-click to delete`;
 }
 function endBoundaryEdit(){
   beActive=false; beParcel=null; beLatLngs=[];
   if(bePoly){map.removeLayer(bePoly);bePoly=null;}
   beVertexMarkers.forEach(m=>map.removeLayer(m)); beVertexMarkers=[];
+  beMidMarkers.forEach(m=>map.removeLayer(m)); beMidMarkers=[];
   $("#bedit").classList.remove("show");
   drawParcels();
   if(selectedId){openDrawer();renderDrawer();}
