@@ -408,7 +408,7 @@ const DEFAULT_PARCELS = [
 let db=null, cloud=false;
 let parcels = clone(DEFAULT_PARCELS);          // working merged list
 let view = clone(DEFAULT_VIEW);
-let selectedId=null, editing=false;
+let selectedId=null, editing=false, didInitialFit=false;
 let beActive=false, beParcel=null, beLatLngs=[], beVertexMarkers=[], beMidMarkers=[], bePoly=null;
 
 const layers={};   // id -> {poly, label}
@@ -436,7 +436,7 @@ map.on("click",e=>{ if(beActive) addBoundaryPoint(e.latlng); });
    ============================================================ */
 (function initCloud(){
   const ok = FIREBASE_CONFIG.projectId && !FIREBASE_CONFIG.projectId.startsWith("PASTE");
-  if(!ok){ setStatus(false); renderAll(); return; }
+  if(!ok){ setStatus(false); renderAll(); maybeInitialFit(); return; }
   try{
     const app=initializeApp(FIREBASE_CONFIG);
     db=getFirestore(app); cloud=true; setStatus(true);
@@ -454,13 +454,14 @@ map.on("click",e=>{ if(beActive) addBoundaryPoint(e.latlng); });
           parcels.push(Object.assign({structures:[],income:[],taxes:[]},overrides[id],{id}));
       });
       renderAll();
+      maybeInitialFit();
       if(selectedId && !beActive) renderDrawer();
     },err=>{ console.error(err); setStatus(false,"Cloud error — local only"); });
     // map view meta
     onSnapshot(doc(db,COLLECTION,META_DOC),d=>{
       if(d.exists() && d.data().center){ view=d.data(); }
     });
-  }catch(err){ console.error(err); setStatus(false,"Local only"); renderAll(); }
+  }catch(err){ console.error(err); setStatus(false,"Local only"); renderAll(); maybeInitialFit(); }
 })();
 
 function setStatus(live,txt){
@@ -545,6 +546,18 @@ function renderHoldings(){
   });
 }
 function renderAll(){ renderLedger(); drawParcels(); renderHoldings(); }
+
+// Frame the map on the actual parcel boundaries (cloud-saved when available).
+function fitAllParcels(){
+  if(beActive) return false;
+  const pts=[];
+  parcels.forEach(p=>(p.boundary||[]).forEach(v=>pts.push([v.lat,v.lng])));
+  if(pts.length<2) return false;
+  map.fitBounds(L.latLngBounds(pts),{paddingTopLeft:[60,90],paddingBottomRight:[60,60],maxZoom:16});
+  return true;
+}
+// Runs once on first load, after data (cloud or seed) is in hand.
+function maybeInitialFit(){ if(!didInitialFit && fitAllParcels()) didInitialFit=true; }
 
 /* ============================================================
    8)  Select + fly
